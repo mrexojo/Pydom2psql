@@ -8,10 +8,10 @@ You can check number tables, rows and average rows per database, calculating the
 
 Verions of tools used:
 
-SO: Centos 7.3
-PostgreSQL 9.2.18
-Python 2.7
-psycopg2: 2.7.3.1
+- SO: Centos 7.3
+- PostgreSQL 9.2.18
+- Python 2.7
+- psycopg2: 2.7.3.1
 
 
 Content:
