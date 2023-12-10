@@ -1,55 +1,50 @@
-#!/usr/bin/python
-import sys
-import socket
 import argparse
+import socket
+import sys
 import getpass
-import logging
-import resources as rs
-import sql
+import logging as log
 
-log, xt_info = rs.it_logger()
+# Argument parser
+psr = argparse.ArgumentParser(description="This script connects to a PostgreSQL database.")
+psr.add_argument("--ip", help="IP address of the database", required=True)
+psr.add_argument("--user", help="Username for the database", required=True)
+psr.add_argument("--count", help="Count of databases", type=int, default=1)
+psr.add_argument("--tables", help="Total tables per db", type=int, default=1)
+psr.add_argument("--rows", help="Rows Squared per table", type=int, default=10)
+psr.add_argument("--port", help="Port db", type=int, default=5432)
+psr.add_argument("--db", help="Database name", required=True)
 
+dat = psr.parse_args()
 
-def check():
-    psr = argparse.ArgumentParser()
-    # Required arguments
-    req = psr.add_argument_group('Use Required')
-    req.add_argument("--ip", help="IP address Postgresql server ", required=True)
-    req.add_argument("--user", help="Username", required=True)
+# Socket creation
+s = socket.socket()
+s.settimeout(3)
 
-    # Optional arguments
-    psr.add_argument("--port", help="Port db", type=int, default=5432)
-    psr.add_argument("--db", help="Dbname", default="postgres")
-    psr.add_argument("--")
-    chk = psr.parse_args()
-    ip = chk.ip
-    user = chk.user
-    port = chk.port
-    dbname = chk.db
+try:
+    s.connect((dat.ip, dat.port))
+except socket.error as exc:
+    log.error(f"Connection Error: {exc}")
+    sys.exit(1)
 
-    if not chk.ip or not chk.user:
-        logging.error('Please, for help use with -h or --help argument', extra=xt_info)
-        sys.exit(1)
+# User Password
+print(f"{dat.user} user")
+pwd = getpass.getpass()
 
-    else:
-        s = socket.socket()
-        s.settimeout(3)
+# Database connection
+try:
+    conn = rs.pg_connect(dat.ip, dat.port, dat.user, pwd, dat.db)
+    cur = conn.cursor()
+    log.info("Connected to Postgresql!", extra=xt_info)
+    sql.total_rws(cur, dat.ip, dat.port, dat.user, pwd)
+except Exception as e:
+    log.error(f"Database connection error: {e}")
+    sys.exit(1)
 
-        try:
-            s.connect((chk.ip, chk.port))
-        except socket.error, exc:
-            print "Connection Error: " % exc
-            sys.exit(1)
-
-    # User Password
-    print chk.user + " user"
-    pwd = getpass.getpass()
-
-    if pwd:
-        conn = rs.pg_connect(ip, port, user, pwd, dbname)
-        cur = conn.cursor()
-        log.info("Connected to Postgresql!", extra=xt_info)
-        sql.total_rws(cur, ip, port, user, pwd)
+# Remember to close connections when done
+finally:
+    s.close()
+    if conn:
+        conn.close()
 
 
 if __name__ == "__main__":

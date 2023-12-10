@@ -1,61 +1,43 @@
-#!/usr/bin/python
-import sys
-import socket
 import argparse
+import socket
+import sys
 import getpass
-import pg_creator
-import resources as rs
+import logging as log
 
-log, xt_info = rs.it_logger()
+# Argument parser
+psr = argparse.ArgumentParser(description="This script connects to a PostgreSQL database.")
+psr.add_argument("--ip", help="IP address of the database", required=True)
+psr.add_argument("--user", help="Username for the database", required=True)
+psr.add_argument("--count", help="Count of databases", type=int, default=1)
+psr.add_argument("--tables", help="Total tables per db", type=int, default=1)
+psr.add_argument("--rows", help="Rows Squared per table", type=int, default=10)
+psr.add_argument("--port", help="Port db", type=int, default=5432)
 
+dat = psr.parse_args()
 
-def main():
-    psr = argparse.ArgumentParser()
-    # Required arguments
-    req = psr.add_argument_group('Use Required')
-    req.add_argument("--ip", help="IP address Postgresql server ", required=True)
-    req.add_argument("--user", help="Username", required=True)
+# Socket creation
+s = socket.socket()
+s.settimeout(3)
 
-    # Optional arguments
-    psr.add_argument("--count", help="Total dbs to create", type=int, default=1)
-    psr.add_argument("--tables", help="Total tables per db", type=int, default=1)
-    psr.add_argument("--rows", help="Rows Squared per table", type=int, default=10)
-    psr.add_argument("--port", help="Port db", type=int, default=5432)
+try:
+    s.connect((dat.ip, dat.port))
+except socket.error as exc:
+    log.error(f"Connection Error: {exc}")
+    sys.exit(1)
 
-    dat = psr.parse_args()
-    ip = dat.ip
-    user = dat.user
-    count = dat.count
-    tables = dat.tables
-    rows = dat.rows
-    port = dat.port
+# User Password
+print(f"{dat.user} user")
+pwd = getpass.getpass()
 
-    if not dat.ip or not dat.user:
-        log.error('Please, for help use with -h or --help argument', extra=xt_info)
-        sys.exit(1)
+# Database connection
+try:
+    conn = rs.pg_connect(dat.ip, dat.port, dat.user, pwd, dat.db)
+    cur = conn.cursor()
+except Exception as e:
+    log.error(f"Database connection error: {e}")
+    sys.exit(1)
 
-    else:
-        s = socket.socket()
-        s.settimeout(3)
-
-        try:
-            s.connect((dat.ip, dat.port))
-        except socket.error, exc:
-            print "Connection Error: " % exc
-            sys.exit(1)
-
-    # User Password
-    print dat.user + " user"
-    pwd = getpass.getpass()
-
-    try:
-        # Data Creator
-        pg_creator.db_creator(ip, port, user, pwd, count, tables, rows)
-        log.info("Finished data creation", extra=xt_info)
-    except:
-        print
-        log.exception("Fail data creation", extra=xt_info)
-
-
-if __name__ == "__main__":
-    main()
+# Remember to close connections when done
+finally:
+    s.close()
+    conn.close()
