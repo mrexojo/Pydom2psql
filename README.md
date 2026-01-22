@@ -1,131 +1,61 @@
-# Pyrandom2postgre
-------------
-PyRandom to Postgresql
-------------
+# Pydom2psql - Dockerized
 
-Concept test is generate random data on PostgreSQL server and check some parameters of server.
-You can check number tables, rows and average rows per database, calculating the total rows of Postgresql server at the end of output.
+Python scripts to generate random PostgreSQL databases, tables, and data for performance testing or verification.
 
-Verions of tools used:
+## Features
 
-- SO: Centos 7.3
-- PostgreSQL 9.2.18
-- Python 2.7
-- psycopg2: 2.7.3.1
+- **Safe & Secure**: Uses parameterized queries and environment variables for credentials.
+- **Dockerized**: specific `Dockerfile` and `docker-compose` setup for instant usage.
+- **Automated**: Generates multiple DBs and tables with a squared number of rows pattern.
+- **Verification**: `check.py` scans the server to report total stats for generated data.
 
+## Project Structure
 
-Content:
+- `iterator.py`: Main entry point for generating data.
+- `check.py`: Tool to verify and count generated data.
+- `pg_creator.py` & `sql.py`: Core logic for DB operations.
+- `resources.py`: Shared utilities (logging, connection).
 
-    - iterator.py
-    - check.py
-    - pg_creator.py
-    - sql.py
-    - resources.py
+## Getting Started (Docker)
 
+1. **Start the Environment**
+   ```bash
+   docker compose up -d
+   ```
+   This starts a PostgreSQL 15 container and an app container.
 
-iterator.py
----------
+2. **Generate Data**
+   Run the generator inside the app container:
+   ```bash
+   # Generate 2 Databases, 2 Tables each, 10^2=100 rows per table
+   docker compose exec app python iterator.py --count 2 --tables 2 --rows 10
+   ```
+   *Note: Authentication is handled automatically via environment variables defined in `docker-compose.yml`.*
 
-Python script for generate random data from server or client with tools.
-The arguments required are --ip for ip address (or localhost from server), and --user for username of PostgreSQL for connect.
-Password always is a interactive input. If not use optional arguments, itera.py generates random data on the next distribution:
+3. **Check Statistics**
+   Run the checker to see what was created:
+   ```bash
+   docker compose exec app python check.py
+   ```
 
-    1 database
-    1 table
-    100 rows
+4. **Cleanup**
+   To stop and remove containers (and data volume):
+   ```bash
+   docker compose down -v
+   ```
 
-(1 row = 8 columns of 12 random characters for each.)
+## Local Usage
 
-This program use pg_creator.py for an iterate creation of data, and this use sql.py for sql sentences. Both are using resources.py for connection, random name of databases or tables.
+If you prefer running locally (requires Python 3.9+ and PostgreSQL running):
 
-For more speed, the number of rows per table are squared, therefore the next command :
+1. Install dependencies:
+   ```bash
+   pip install -r requirements.txt
+   ```
 
-    iterator.py --ip 192.168.49.78 --user postgres --rows 50
-
-You'll generate:
-
-    1 database
-    1 table
-    2500 rows
-
-DATA GENERATION USE
--------
-usage: iterator.py [-h] --ip IP --user USER [--count COUNT] [--tables TABLES]
-                 [--rows ROWS] [--port PORT]
-
-optional arguments:
-  -h, --help       show this help message and exit
-  --count COUNT    Total dbs to create
-  --tables TABLES  Total tables per db
-  --rows ROWS      Rows Squared per table
-  --port PORT      Port db
-
-Use Required:
-  --ip IP          IP address Postgresql server
-  --user USER      Username
-
-example:
-
-    python iterator.py --ip 192.168.49.78 --user postgres
-
-output:
-    postgres user
-    Password:
-     Data creating...
-    db: itera_llmn ->table: tb_lxy ->row: 0
-    db: itera_llmn ->table: tb_lxy ->row: 1
-    db: itera_llmn ->table: tb_lxy ->row: 2
-    db: itera_llmn ->table: tb_lxy ->row: 3
-    ....
-    ...
-    .
-
-CHECK
------
-
-Check.py is a python script which show number tables, rows and average rows per database,
-calculating the total rows of Postgresql server at the end of output.
-Execution of this script it's similar to itera.py
-
-example:
-
-    python check.py --ip 192.168.49.78 --user postgres
-
-output:
-    postgres user
-    Password:
-
-    ----------
-    Database: itera_lhpg
-    Total rows: 23328
-    Total tables: 8
-    Average rows: 2916
-    ----------
-    ....
-    ...
-    ..
-    .
-    Database: itera_jdum
-    Total rows: 7200
-    Total tables: 2
-    Average rows: 3600
-    ----------
-    Database: itera_frps
-    Total rows: 45916
-    Total tables: 1
-    Average rows: 45916
-    ----------
-    Database: itera_thod
-    Total rows: 112906
-    Total tables: 12
-    Average rows: 9408
-    ------------------------------
-    Total rows PostgreSQL server: 1208455
-
-
-Clear
-------
-For clean databases created by iterator.py, at the moment execute from bash shell Postgresql server (as postgres user or allowed user):
-
-    for i in `psql -l | awk {'print $1'} | grep itera_`; do dropdb $i; done
-
+2. Run scripts:
+   ```bash
+   # Set env vars or pass args
+   export PG_PASSWORD=mysecretpassword
+   python iterator.py --ip localhost --user postgres --count 1
+   ```

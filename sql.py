@@ -1,121 +1,80 @@
-#!/usr/bin/python
+from psycopg2 import sql, extras
+import random
+import logging
 import resources as rs
-from psycopg2 import sql
 
+logger = logging.getLogger("Pydom2psql")
 
-# Delete quote on word - function
-def no_q(wordq):
-    word = wordq.replace('\'', '')
-    return word
+def create_database(conn, db_name):
+    """Creates a new database safely using sql identifiers."""
+    try:
+        with conn.cursor() as cur:
+            # FORCE_FIRST: cannot run CREATE DATABASE inside a transaction block if not autocommit
+            # conn.autocommit should be True from resources.pg_connect
+            query = sql.SQL("CREATE DATABASE {};").format(sql.Identifier(db_name))
+            cur.execute(query)
+            logger.info(f"Database created: {db_name}")
+    except Exception as e:
+        logger.error(f"Error creating database {db_name}: {e}")
+        # We might continue if it already exists, or raise
+        pass
 
+def create_table(conn, table_name):
+    """Creates a table with 8 varchar columns."""
+    columns = [f"col{i}" for i in range(1, 9)]
+    
+    # Construct column definitions: col1 VARCHAR(12), col2 VARCHAR(12)...
+    col_defs = sql.SQL(", ").join(
+        [sql.SQL("{} VARCHAR(12)").format(sql.Identifier(c)) for c in columns]
+    )
 
-# Database Creator - function
-def mk_db(conn, cur, dbname):
-    dbnam = no_q(dbname)
+    query = sql.SQL("CREATE TABLE {} ({});").format(
+        sql.Identifier(table_name),
+        col_defs
+    )
 
-    cur.execute("CREATE DATABASE %s ;" % dbnam)
-    conn.commit()
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            logger.info(f"Table created: {table_name}")
+    except Exception as e:
+        logger.error(f"Error creating table {table_name}: {e}")
+        raise
 
+def insert_dummy_data(conn, table_name, num_rows):
+    """Inserts dummy data into the table."""
+    # Generate data: List of tuples
+    # each tuple has 8 random strings
+    data = []
+    
+    # Generate data in memory (watch out for huge num_rows, but usually it is small-ish for this tool)
+    # The READMe mentions 'Rows Squared' so if input is 50, rows=2500 per table.
+    
+    for _ in range(num_rows):
+        row = tuple(rs.rdm_string(12) for _ in range(8))
+        data.append(row)
 
-# Table creator - function
-def mk_table(conn, cur, tbname):
-    tbnam = no_q(tbname)
-    cols = "(col1 VARCHAR(12), col2 VARCHAR(12), col3 VARCHAR(12), col4 VARCHAR(12), col5 VARCHAR(12), col6 VARCHAR(12), col7 VARCHAR(12))"
-    tbcreate = sql.SQL("CREATE TABLE {tb} {};").format(sql.Literal(no_q(cols)), tb=sql.Identifier(tbnam))
+    columns = [f"col{i}" for i in range(1, 9)]
+    
+    insert_query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
+        sql.Identifier(table_name),
+        sql.SQL(", ").join(map(sql.Identifier, columns))
+    )
 
-    # psycopg2 introduce quote on params. SQL needs no quote on "cols"
-    clean_tbcreate = (no_q(tbcreate.as_string(conn)))
-    # load table creation
-    cur.execute(clean_tbcreate)
+    try:
+        with conn.cursor() as cur:
+            extras.execute_values(cur, insert_query, data)
+            logger.info(f"Inserted {num_rows} rows into {table_name}")
+    except Exception as e:
+        logger.error(f"Error inserting data into {table_name}: {e}")
+        raise
 
-
-# Rows-Data creator - function
-def insert_data(cur, tbnam, nrows):
-    for h in range(nrows):
-
-        p_list = list()
-        for i in range(7):
-            value = rs.rdm_string(12)
-            p_list.insert(i, value)
-
-        r_list = list()
-        r_list.insert(h, p_list)
-
-        s_list = ','.join(cur.mogrify('(%s,%s,%s,%s,%s,%s,%s);', x) for x in r_list)
-        sql = """INSERT INTO {} (col1, col2, col3, col4, col5, col6, col7) VALUES """.format(tbnam)
-        ins = sql + s_list
-
-        cur.execute(ins)
-
-
-# Databases count - function
-def cl_db(cur, n):
-    s_ndb = "SELECT datname FROM pg_database WHERE datname NOT IN ('template0','template1');"
-    cur.execute(s_ndb)
-    ndb = cur.rowcount
-    l_db = cur.fetchall()
-    if n > 0:
-        return l_db
-    else:
-        return ndb
-
-
-# Tables count - function
-def cl_tb(cur, n):
-    s_ntb = "SELECT table_name FROM information_schema.tables WHERE table_schema='public' AND table_type='BASE TABLE';"
-    cur.execute(s_ntb)
-    ntb = cur.rowcount
-    l_tb = cur.fetchall()
-    if n > 0:
-        return l_tb
-    else:
-        return ntb
-
-
-# Total & Average rows - function
-def total_rws(cur, host, port, username, password):
-
-    # Iterate rows by db list
-    total_rwdbs = 0
-    dblist = cl_db(cur, 1)
-
-    for z in range(cl_db(cur, 0)):
-
-        namdb = (dblist[z])
-        nmdb = ''.join(map(str, namdb))
-        print "----------"
-        print "Database: " + str(nmdb)
-        cur.close()
-        # Connect to db
-        conn = rs.pg_connect(host, port, username, password, nmdb)
-        cur = conn.cursor()
-
-        total_rwdb = 0
-        total_tb = cl_tb(cur, 0)
-        tblist = cl_tb(cur, 1)
-
-        # Iterate total rows per table
-        for f in range(total_tb):
-            tb = ''.join(map(str, tblist[f]))
-            rws_table = "SELECT reltuples::bigint AS rws FROM pg_class WHERE oid = '%s'::regclass;" % tb
-            cur.execute(rws_table)
-            trw = cur.fetchone()
-            # String to integer cleaner
-            ctrw = ''.join(map(str, trw))
-            st2int = int(ctrw)
-            # Sum rows each table
-            total_rwdb += st2int
-
-        # Sum & average rows per db
-        print "Total rows: " + str(total_rwdb)
-        print "Total tables: " + str(total_tb)
-        if total_tb > 0:
-            avarows = total_rwdb / total_tb
-            print "Average rows: " + str(avarows)
-        else:
-            print "N/A"
-
-        # Sum total rows of all dbs
-        total_rwdbs += total_rwdb
-    print "------------------------------"
-    print "Total rows PostgreSQL server: " + str(total_rwdbs)
+def count_rows(conn, table_name):
+    query = sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name))
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            return cur.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error counting rows in {table_name}: {e}")
+        return 0
