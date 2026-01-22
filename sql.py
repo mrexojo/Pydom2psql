@@ -1,30 +1,80 @@
-#!/usr/bin/python
+from psycopg2 import sql, extras
+import random
+import logging
 import resources as rs
-from psycopg2 import sql
 
-# Remove quotes from a string - function
-def no_q(wordq):
-    return wordq.replace('\'', '')
+logger = logging.getLogger("Pydom2psql")
 
-# Database Creator - function
-def mk_db(conn, cur, dbname):
-    dbnam = no_q(dbname)
+def create_database(conn, db_name):
+    """Creates a new database safely using sql identifiers."""
     try:
-        cur.execute("CREATE DATABASE %s ;" % dbnam)
-        conn.commit()
+        with conn.cursor() as cur:
+            # FORCE_FIRST: cannot run CREATE DATABASE inside a transaction block if not autocommit
+            # conn.autocommit should be True from resources.pg_connect
+            query = sql.SQL("CREATE DATABASE {};").format(sql.Identifier(db_name))
+            cur.execute(query)
+            logger.info(f"Database created: {db_name}")
     except Exception as e:
-        logging.error(f"Database creation error: {e}")
+        logger.error(f"Error creating database {db_name}: {e}")
+        # We might continue if it already exists, or raise
+        pass
 
-# Table creator - function
-def mk_table(conn, cur, tbname):
-    tbnam = no_q(tbname)
-    cols = "(col1 VARCHAR(12), col2 VARCHAR(12), col3 VARCHAR(12), col4 VARCHAR(12), col5 VARCHAR(12), col6 VARCHAR(12), col7 VARCHAR(12))"
-    tbcreate = sql.SQL("CREATE TABLE {tb} {};").format(sql.Literal(no_q(cols)), tb=sql.Identifier(tbnam))
+def create_table(conn, table_name):
+    """Creates a table with 8 varchar columns."""
+    columns = [f"col{i}" for i in range(1, 9)]
+    
+    # Construct column definitions: col1 VARCHAR(12), col2 VARCHAR(12)...
+    col_defs = sql.SQL(", ").join(
+        [sql.SQL("{} VARCHAR(12)").format(sql.Identifier(c)) for c in columns]
+    )
 
-    # psycopg2 introduce quote on params. SQL needs no quote on "cols"
-    clean_tbcreate = (no_q(tbcreate.as_string(conn)))
-    # load table creation
+    query = sql.SQL("CREATE TABLE {} ({});").format(
+        sql.Identifier(table_name),
+        col_defs
+    )
+
     try:
-        cur.execute(clean_tbcreate)
+        with conn.cursor() as cur:
+            cur.execute(query)
+            logger.info(f"Table created: {table_name}")
     except Exception as e:
-        logging.error(f"Table creation error: {e}")
+        logger.error(f"Error creating table {table_name}: {e}")
+        raise
+
+def insert_dummy_data(conn, table_name, num_rows):
+    """Inserts dummy data into the table."""
+    # Generate data: List of tuples
+    # each tuple has 8 random strings
+    data = []
+    
+    # Generate data in memory (watch out for huge num_rows, but usually it is small-ish for this tool)
+    # The READMe mentions 'Rows Squared' so if input is 50, rows=2500 per table.
+    
+    for _ in range(num_rows):
+        row = tuple(rs.rdm_string(12) for _ in range(8))
+        data.append(row)
+
+    columns = [f"col{i}" for i in range(1, 9)]
+    
+    insert_query = sql.SQL("INSERT INTO {} ({}) VALUES %s").format(
+        sql.Identifier(table_name),
+        sql.SQL(", ").join(map(sql.Identifier, columns))
+    )
+
+    try:
+        with conn.cursor() as cur:
+            extras.execute_values(cur, insert_query, data)
+            logger.info(f"Inserted {num_rows} rows into {table_name}")
+    except Exception as e:
+        logger.error(f"Error inserting data into {table_name}: {e}")
+        raise
+
+def count_rows(conn, table_name):
+    query = sql.SQL("SELECT count(*) FROM {}").format(sql.Identifier(table_name))
+    try:
+        with conn.cursor() as cur:
+            cur.execute(query)
+            return cur.fetchone()[0]
+    except Exception as e:
+        logger.error(f"Error counting rows in {table_name}: {e}")
+        return 0

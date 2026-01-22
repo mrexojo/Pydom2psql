@@ -1,30 +1,44 @@
-#!/usr/bin/python
-import psycopg2 as p
-from psycopg2.extensions import ISOLATION_LEVEL_AUTOCOMMIT
-import getpass
+import os
 import logging
+import psycopg2
 import random
 import string
+from typing import Optional
 
-# Connector Postgres server - function
-def pg_connect(host, port, username, password, dbname):
-    xt_info = it_logger()
-    conn = None
+# Configuration for logging
+def setup_logger():
+    logging.basicConfig(
+        level=logging.INFO,
+        format='%(asctime)s - %(levelname)s - %(message)s'
+    )
+    return logging.getLogger("Pydom2psql")
+
+logger = setup_logger()
+
+def get_env_variable(name: str, default: Optional[str] = None) -> str:
+    val = os.getenv(name, default)
+    if val is None:
+        raise EnvironmentError(f"Missing required environment variable: {name}")
+    return val
+
+def pg_connect(host, port, user, password, dbname, autocommit=True):
+    """
+    Establish a connection to the PostgreSQL database.
+    """
     try:
-        conn = p.connect(user=username, password=password, host=host, port=port, database=dbname)
-        conn.set_isolation_level(ISOLATION_LEVEL_AUTOCOMMIT)
-    except Exception as err:
-        logging.error(err, extra=xt_info)
+        conn = psycopg2.connect(
+            host=host,
+            port=port,
+            user=user,
+            password=password,
+            dbname=dbname
+        )
+        conn.autocommit = autocommit
+        return conn
+    except psycopg2.Error as e:
+        logger.error(f"Connection failed: {e}")
         raise
-    return conn
 
-def rdm_string(x):
-    # generates x random chars
-    return ''.join(random.choice(string.ascii_lowercase) for i in range(x))
-
-def it_logger():
-    # Logging Info
-    username = getpass.getuser()
-    # Add more logging configuration if needed
-    logging.basicConfig(level=logging.INFO)
-    return {'user': username}
+def rdm_string(length: int = 8) -> str:
+    """Generate a random string of fixed length."""
+    return ''.join(random.choices(string.ascii_lowercase, k=length))
